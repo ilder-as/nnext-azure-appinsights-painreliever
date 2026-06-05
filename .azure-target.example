@@ -1,0 +1,7 @@
+# Template for .azure-target (the real file is GITIGNORED — never commit secrets).
+# Copy to `.azure-target` and fill in your environment's values. The extract-events
+# skill sources this to know which tenant/subscription/resource to pull from.
+#   set -a; . ./.azure-target; set +a
+AZ_TENANT=<entra-tenant-guid>          # Entra tenant the App Insights resource lives in
+AZ_SUBSCRIPTION=<subscription-guid>    # subscription holding the resource
+APP=<app-insights-app-id-guid>         # App Insights App-ID (or full resource id)

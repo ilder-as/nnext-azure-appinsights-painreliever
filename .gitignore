@@ -9,6 +9,9 @@ app/dist/
 # Remembered extraction source (local resource pointer)
 .source
 
+# Local Azure target — sensitive tenant/subscription/App-ID. Keep `.example` only.
+.azure-target
+
 # Local design bake-off artifacts
 mocks/
 

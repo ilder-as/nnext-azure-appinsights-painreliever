@@ -47,21 +47,24 @@ export function BootOverlay() {
         {isError ? (
           <>
             The dashboard needs <span className="mono">./data/meta.json</span>{" "}
-            and <span className="mono">./data/events.json</span>. Generate them
-            first by running:
+            and <span className="mono">./data/events.json</span>. Check the{" "}
+            <span className="mono">extract-events</span> agent skill and run the
+            appropriate commands to generate them:
           </>
         ) : isEmpty ? (
           <>
             <span className="mono">./data/events.json</span> loaded but contains
-            no events for the selected window. Re-run the extractor with a wider
-            window, e.g.{" "}
-            <span className="mono">WINDOW_DAYS=30 ../extract/extract.sh</span>.
+            no events for the selected window. Re-run the{" "}
+            <span className="mono">extract-events</span> agent skill with a
+            wider window, e.g. <span className="mono">WINDOW_DAYS=30</span>.
           </>
         ) : (
           "Reading ./data/events.json and computing aggregates"
         )}
       </div>
-      {isError && <pre className="boot-cmd">../extract/extract.sh</pre>}
+      {isError && (
+        <pre className="boot-cmd">/extract-events — check the agent skill</pre>
+      )}
     </div>
   );
 }

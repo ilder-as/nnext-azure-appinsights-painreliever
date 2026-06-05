@@ -18,43 +18,70 @@ on your machine.
   `app/public/data/`. See `.claude/skills/extract-events/`.
 - **`CONTRACT.md`** — the JSON data contract the app consumes.
 
-## Quick start
+## Get started — just ask Claude (recommended)
+
+This repo is wired for [Claude Code](https://claude.com/claude-code). Open it and
+ask, in plain English:
+
+> **"Extract the data and start the project."**
+
+Claude runs the bundled **`extract-events`** skill end to end:
+
+1. **Sets up local config** — on first run it creates a gitignored `.azure-target`
+   file (Azure tenant / subscription / resource). It walks you through discovery:
+   which tenant holds the App Insights resource, which component has the events —
+   and remembers it, so later runs are one step.
+2. **Logs you into Azure** — the resource may be in a non-default Entra tenant, so
+   Claude will ask you to run an interactive `az login --tenant …` (MFA). Just
+   paste the command it gives you with a leading `!` in the Claude prompt.
+3. **Pulls the telemetry** into `app/public/data/` (events, exceptions, meta) and
+   reports the counts.
+4. **Starts the dashboard** — `cd app && pnpm install && pnpm dev`.
+
+A fresh clone ships **no data** (telemetry is gitignored — see Data privacy), so
+the dashboard shows a "no data" screen until you run the extract. That's expected.
+
+You'll need: the [Azure CLI](https://learn.microsoft.com/cli/azure/) (`az`) with
+read access to the target resource, `python3`, and `pnpm`.
+
+## Manual quick start
+
+If you'd rather drive it yourself:
 
 ```bash
+# 1. Configure + extract (first run creates .azure-target, then pulls data)
+#    Follow .claude/skills/extract-events/SKILL.md — it's a copy-pasteable runbook.
+cp .azure-target.example .azure-target   # then fill in tenant / subscription / App-ID
+# … az login --tenant <id>; az account set --subscription <id> …
+
+# 2. Run the app
 cd app
 pnpm install
-pnpm dev            # → http://localhost:5199/
+pnpm dev            # → http://localhost:5199/ (or next free port)
 ```
 
-The repo already ships with an extracted dataset in `app/public/data/`. To pull
-fresh data, run the extraction skill (below), then hit **Refresh** in the app
-(it re-reads `./data/*.json` in place, preserving your filters).
-
 Other scripts: `pnpm build` (typecheck + production bundle), `pnpm preview`
-(serve the build), `pnpm typecheck`.
+(serve the build), `pnpm typecheck`. After re-extracting, hit **Refresh** in the
+app — it re-reads `./data/*.json` in place, preserving your filters.
 
 ## Extracting / refreshing data
 
-Two equivalent ways — both write `app/public/data/{events.json,meta.json}`:
+The **`extract-events` skill** is the source of truth (`.claude/skills/extract-events/SKILL.md`)
+— a self-contained runbook you can let Claude run or paste into a terminal. It
+writes `app/public/data/{events.json,meta.json,exceptions.json}`. Only deps: an
+authenticated `az` CLI (it auto-installs the `application-insights` extension) and
+`python3`.
 
-1. **Skill** (from Claude Code): say _"extract event data"_ / _"refresh analytics
-   data"_ (or `/extract-events`). It runs the extraction and reports counts.
-2. **Bash command**: the self-contained command lives in
-   `.claude/skills/extract-events/SKILL.md` — paste it into a terminal. Only deps
-   are an authenticated `az` CLI and `python3`.
-
-**Point it at any project**: the skill lists your App Insights components and you
-pick one (or pass `APP=<resource-id-or-App-ID>`); it remembers your choice in
-`.source`. Re-run with a different `APP=` to repoint (one project
-at a time). The resource name is shown in the UI from `meta.resource`.
-
-Prereqs for extraction:
-
-- Azure CLI logged in with read access to the target:
-  `az login --scope https://management.core.windows.net//.default`
-  (MFA expires periodically). The skill auto-installs the `application-insights`
-  CLI extension if needed. The resource must be in your active subscription.
-- `WINDOW_DAYS` controls the window (default 30).
+- **Local config (`.azure-target`)** — gitignored, holds the target tenant /
+  subscription / App-ID GUID (these are environment-specific and kept out of git).
+  Created automatically on first run; `.azure-target.example` is the template.
+- **Non-default tenant** — if the resource lives in another Entra tenant, the skill
+  has you `az login --tenant <id>` first (interactive). After that the App-ID is
+  also remembered in the gitignored `.source`.
+- **Repoint to any project** — edit `.azure-target` (or pass `APP=<resource-id-or-App-ID>`)
+  and re-run. One project at a time; the resource name shows in the UI from
+  `meta.resource`.
+- **`WINDOW_DAYS`** controls the window (default 30).
 
 ## What the dashboard shows
 
@@ -101,3 +128,8 @@ Users** deep-links straight to that user's sessions.
 `app/public/data/` contains **real production telemetry, including user email
 addresses and search terms**. It is git-ignored and must never be committed.
 The extract lives only on your machine.
+
+`.azure-target` and `.source` hold environment-specific Azure identifiers
+(tenant / subscription / resource App-ID) and are likewise git-ignored — only the
+placeholder **`.azure-target.example`** is tracked. Never hard-code these into
+tracked files.

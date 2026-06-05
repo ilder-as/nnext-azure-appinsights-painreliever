@@ -12,7 +12,7 @@ export function RefreshButton() {
     <button
       className={`refresh-btn${refreshing ? " loading" : ""}`}
       type="button"
-      title="Reload the latest export (run extract.sh to pull fresh data)"
+      title="Reload the latest export (run the extract-events agent skill to pull fresh data)"
       aria-label="Reload latest data"
       onClick={refresh}
       disabled={refreshing}

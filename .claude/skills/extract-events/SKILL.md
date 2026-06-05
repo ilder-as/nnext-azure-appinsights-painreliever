@@ -15,28 +15,101 @@ Works for **any** project: the resource is configurable (env `APP`, a remembered
 `.source`, or interactive pick). Only deps: an authenticated `az`
 CLI (with read access to the target) and `python3`.
 
-## Step 1 — Preflight
+## Step 1 — Local config (`.azure-target`) — auto-created on first run
+
+The target tenant / subscription / App-ID are **environment-specific and may be
+sensitive**, so they are NOT hard-coded in this skill. They live in a gitignored
+file **`.azure-target`** at the repo root. Run this bootstrap first — it ensures
+the file is gitignored and **sources it if present**:
 
 ```bash
-az account show -o table 2>/dev/null || echo "NOT LOGGED IN → run: az login --scope https://management.core.windows.net//.default"
+ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
+# Make sure local config + exports never get committed (idempotent).
+for p in .azure-target .source app/public/data/; do
+  grep -qxF "$p" .gitignore 2>/dev/null || printf '%s\n' "$p" >> .gitignore
+done
+if [ -f .azure-target ]; then
+  set -a; . ./.azure-target; set +a       # exports AZ_TENANT, AZ_SUBSCRIPTION, APP
+  echo "Loaded .azure-target → tenant=${AZ_TENANT:-?} sub=${AZ_SUBSCRIPTION:-?} app=${APP:+set}"
+else
+  echo "NO .azure-target yet → first run: discover it (Step 1a), then write it (Step 1b)."
+fi
+```
+
+**If `.azure-target` exists**, log into its tenant (interactive — have the USER
+run it) and select the subscription, then skip to Step 3 (`APP` is already set):
+
+```bash
+az login --tenant "$AZ_TENANT"             # MFA; user runs via `! az login --tenant …`
+az account set --subscription "$AZ_SUBSCRIPTION"
+```
+
+### Step 1a — Discover (first run only)
+
+The resource may be in a **non-default Entra tenant**, so a fresh `az login
+--tenant <id>` is usually required (the default login often has no App Insights).
+Drive the user through it:
+
+1. Ask the user which **tenant** (and, if known, subscription) holds the App
+   Insights resource. If unknown, `az account list -o table` shows what the
+   current login can see; a different tenant needs `az login --tenant <id>` first.
+   The login is interactive (MFA) — have the user run it: `! az login --tenant <id>`.
+2. Set the subscription: `az account set --subscription <id>`.
+3. List App Insights components and pick the one with `customEvents` (an app/SPA
+   resource, not an API backend). Note: the extension subcommand
+   `az monitor app-insights component list` sometimes errors _"'list' not
+   recognized"_ — the `az resource list` fallback is reliable:
+
+   ```bash
+   az resource list --resource-type microsoft.insights/components \
+     --query "[].{name:name, rg:resourceGroup}" -o table
+   ```
+
+   If unsure which has events, count over a short window (replace NAME/RG):
+
+   ```bash
+   az monitor app-insights query --app NAME --resource-group RG --offset 7d \
+     --analytics-query "customEvents | where timestamp > ago(7d) | summarize count()" -o tsv
+   ```
+
+4. Get its **App-ID GUID** (stable, works with `--app` without an RG):
+
+   ```bash
+   az resource show --name NAME --resource-group RG \
+     --resource-type microsoft.insights/components --query "properties.AppId" -o tsv
+   ```
+
+### Step 1b — Write `.azure-target` (first run only)
+
+Persist what you discovered so future runs skip all of the above. Fill the three
+values from Step 1a:
+
+```bash
+ROOT="$(git rev-parse --show-toplevel)"
+cat > "$ROOT/.azure-target" <<EOF
+# Local Azure target for the extract-events skill — GITIGNORED, do not commit.
+# Source before running:  set -a; . ./.azure-target; set +a
+AZ_TENANT=<tenant-guid>
+AZ_SUBSCRIPTION=<subscription-guid>
+APP=<app-insights-app-id-guid>
+EOF
+echo "Wrote $ROOT/.azure-target — re-run Step 1 to load it."
+```
+
+A tracked **`.azure-target.example`** documents the format. After Step 1b, source
+the file (Step 1 top) and continue. Repoint later by editing `.azure-target` (or
+just re-run Step 1a/1b).
+
+## Step 2 — Preflight
+
+```bash
+az account show -o table 2>/dev/null || echo "NOT LOGGED IN → run: az login --tenant <id>"
 az extension show -n application-insights >/dev/null 2>&1 || az extension add -n application-insights
 ```
 
-If not logged in, tell the user to `az login` (MFA expires) and stop. Note the
-active subscription — the target resource must be in it (or have them `az account
-set` / `az login --tenant`).
-
-## Step 2 — Choose the resource (if not already set)
-
-`APP` may be a full resource id **or** an App-ID GUID. Resolution order: env `APP`
-→ remembered `.source` → ask. To list what's available:
-
-```bash
-az monitor app-insights component list --query "[].{name:name, rg:resourceGroup, id:id}" -o table 2>/dev/null \
-  || az resource list --resource-type microsoft.insights/components --query "[].{name:name, rg:resourceGroup, id:id}" -o table
-```
-
-Present the list, let the user pick, then run Step 3 with `APP=<their choice>`.
+If not logged in, tell the user to `az login --tenant "$AZ_TENANT"` (MFA expires)
+and stop. Confirm the active subscription matches `$AZ_SUBSCRIPTION` — the target
+resource must be in it.
 
 ## Step 3 — Extract (one self-contained block)
 

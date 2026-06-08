@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { useDashboard } from "@/state/dashboard";
+import { useDashboard, type View } from "@/state/dashboard";
 import { APP_NAME, APP_TAGLINE } from "@/config";
 
 /**
@@ -114,6 +114,16 @@ const GEO_ICON = (
     />
   </svg>
 );
+const PROFILES_ICON = (
+  <svg viewBox="0 0 24 24" fill="none">
+    <path
+      d="M4 20V10M9 20V5M14 20v-7M19 20V8"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+    />
+  </svg>
+);
 
 const OBSERVE: NavItem[] = [
   { id: "__top", label: "Overview", icon: OVERVIEW_ICON, kind: "scroll" },
@@ -127,6 +137,7 @@ const OBSERVE: NavItem[] = [
   { id: "usersCard", label: "Users", icon: USERS_ICON, kind: "scroll" },
 ];
 const INSIGHT: NavItem[] = [
+  { id: "profiles", label: "Profiles", icon: PROFILES_ICON, kind: "view" },
   { id: "failCard", label: "Failures", icon: FAILURES_ICON, kind: "scroll" },
   { id: "breakdownGrid", label: "Breakdowns", icon: GEO_ICON, kind: "scroll" },
 ];
@@ -146,7 +157,8 @@ export function NavRail() {
 
   const go = (it: NavItem) => {
     if (it.kind === "view") {
-      setView("sessions");
+      // the nav id doubles as the View name for view-kind items
+      setView(it.id as View);
       return;
     }
     setActiveScroll(it.id);
@@ -163,7 +175,7 @@ export function NavRail() {
 
   const isActive = (it: NavItem) =>
     it.kind === "view"
-      ? view === "sessions"
+      ? view === it.id
       : view === "overview" && activeScroll === it.id;
 
   const renderItem = (it: NavItem) => (

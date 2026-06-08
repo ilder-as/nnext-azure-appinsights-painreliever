@@ -20,7 +20,7 @@ const EMPTY_TIMELINE: SessionTimeline = {
  * empty search shows every session.
  */
 export function SessionsView() {
-  const { sessions, events, errors, filters } = useDashboard();
+  const { sessions, events, errors, dependencies, filters } = useDashboard();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Filter sessions by the global search: case-insensitive substring over the
@@ -54,9 +54,9 @@ export function SessionsView() {
 
   const timeline = useMemo<SessionTimeline>(() => {
     if (!effectiveId) return EMPTY_TIMELINE;
-    const slice = sessionSlice(events, errors, effectiveId);
-    return buildTimeline(slice.events, slice.errors);
-  }, [events, errors, effectiveId]);
+    const slice = sessionSlice(events, errors, dependencies, effectiveId);
+    return buildTimeline(slice.events, slice.errors, slice.deps);
+  }, [events, errors, dependencies, effectiveId]);
 
   return (
     <div className="sessions-view">

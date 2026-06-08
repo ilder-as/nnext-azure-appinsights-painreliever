@@ -14,6 +14,7 @@ import { BreakdownCard } from "@/components/BreakdownCard";
 import { TopUsers } from "@/components/TopUsers";
 import { RecentFailures } from "@/components/RecentFailures";
 import { SessionsView } from "@/components/SessionsView";
+import { ProfilesView } from "@/components/ProfilesView";
 import EventsExplorer from "@/components/EventsExplorer";
 import EventDrawer from "@/components/EventDrawer";
 
@@ -43,11 +44,15 @@ export default function App() {
 
         <main className="main">
           <TopBar />
-          <FilterBar />
+          {/* The Profiles pivot is computed over the full unfiltered dataset, so
+              the global filter bar would be misleading there — hide it. */}
+          {view !== "profiles" && <FilterBar />}
 
           <div className="content">
             {view === "sessions" ? (
               <SessionsView />
+            ) : view === "profiles" ? (
+              <ProfilesView />
             ) : (
               <>
                 <KpiRow />

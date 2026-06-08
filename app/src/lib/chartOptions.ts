@@ -2,10 +2,88 @@
    Consume the Aggregate directly; components own click handlers + the legend DOM. */
 import * as echarts from "echarts";
 import type { EChartsOption } from "echarts";
-import { esc, fmtInt, fmtPct } from "./format";
+import { esc, fmtDuration, fmtInt, fmtPct } from "./format";
 import type { Aggregate, ColorMap } from "./types";
 
 export type HeroMode = "stacked" | "total";
+
+/** Per-function P75 "time-to-event" trend line over the window (ms values). */
+export function profileTrendOption(
+  series: number[],
+  labels: string[],
+  color: string,
+): EChartsOption {
+  const rgba = (hex: string, a: number) => {
+    const h = hex.replace("#", "");
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${a})`;
+  };
+  return {
+    backgroundColor: "transparent",
+    grid: { left: 8, right: 14, top: 16, bottom: 8, containLabel: true },
+    tooltip: {
+      trigger: "axis",
+      backgroundColor: "rgba(20,20,29,0.97)",
+      borderColor: "#32324a",
+      borderWidth: 1,
+      textStyle: { color: "#f4f3fb", fontSize: 11.5 },
+      axisPointer: {
+        type: "shadow",
+        shadowStyle: { color: "rgba(124,92,255,0.06)" },
+      },
+      extraCssText:
+        "border-radius:10px;box-shadow:0 16px 40px -12px rgba(0,0,0,.7);",
+      formatter: (p: unknown) => {
+        const arr = p as { axisValue: string; data: number }[];
+        const d = arr[0];
+        return `${esc(d.axisValue)}<br/><b>${fmtDuration(d.data)}</b> p75`;
+      },
+    },
+    xAxis: {
+      type: "category",
+      data: labels,
+      axisLine: { lineStyle: { color: "#26263a" } },
+      axisTick: { show: false },
+      axisLabel: { color: "#65647a", fontSize: 10.5 },
+    },
+    yAxis: {
+      type: "value",
+      min: 0,
+      splitLine: { lineStyle: { color: "#1a1a26" } },
+      axisLabel: {
+        color: "#65647a",
+        fontSize: 10.5,
+        formatter: (v: number) => fmtDuration(v),
+      },
+    },
+    series: [
+      {
+        name: "p75",
+        type: "line",
+        smooth: 0.35,
+        symbol: "circle",
+        symbolSize: 6,
+        showSymbol: false,
+        data: series,
+        lineStyle: {
+          color,
+          width: 2.5,
+          shadowColor: rgba(color, 0.5),
+          shadowBlur: 12,
+        },
+        itemStyle: { color },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: rgba(color, 0.28) },
+            { offset: 1, color: rgba(color, 0) },
+          ]),
+        },
+      },
+    ],
+  };
+}
 
 export function heroOption(agg: Aggregate, mode: HeroMode): EChartsOption {
   const series = agg.daySeries; // top-6 types + Other (name/color/data)
@@ -111,13 +189,11 @@ export function donutData(
 } {
   const entries = agg.byType; // already sorted desc
   const grand = entries.reduce((s, e) => s + e[1], 0) || 1;
-  const slices: DonutSlice[] = entries
-    .slice(0, 8)
-    .map(([name, value]) => ({
-      name,
-      value,
-      color: colorMap[name] || "#8b8b9e",
-    }));
+  const slices: DonutSlice[] = entries.slice(0, 8).map(([name, value]) => ({
+    name,
+    value,
+    color: colorMap[name] || "#8b8b9e",
+  }));
   const otherSum = entries.slice(8).reduce((s, e) => s + e[1], 0);
   if (otherSum > 0)
     slices.push({ name: "Other", value: otherSum, color: "#3a3a4e" });

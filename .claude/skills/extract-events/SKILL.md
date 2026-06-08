@@ -204,10 +204,64 @@ sys.stderr.write(str(len(rows))+" exceptions written\n")
 ' "$OUT"
 ```
 
+## Step 3b — Dependencies (real HTTP-call latency → Profiles + load waterfall)
+
+The `dependencies` table carries **real outbound-call durations** (unlike
+`customEvents`, which have none). It powers the Profiles page (real P50–P99 latency
+
+- fail rate per endpoint) and the per-session load waterfall. Pulled as a **7-day**
+  window (`DEPS_DAYS=7`) — high volume (~130k+ calls/week), so keep it tighter than
+  the 30-day events window. Optional/independent like exceptions; 0 rows is valid and
+  `meta.json` is **not** touched (the dashboard derives the 7-day window from the
+  data itself). Day-chunked for reliability (same `--offset` rule as events).
+
+```bash
+DEPS_DAYS="${DEPS_DAYS:-7}"
+NDJSON="$(mktemp)"
+DPROJ="dependencies | project timestamp, name, target, success, resultCode, duration, operation_Name, operation_Id, session_Id, user_AuthenticatedId"
+echo "Extracting $DEPS_DAYS day(s) of dependencies from $RESOURCE_NAME ..." >&2
+for ((d=1; d<=DEPS_DAYS; d++)); do
+  prev=$((d-1))
+  az monitor app-insights query --app "$APP" --offset "${d}d" \
+    --analytics-query "$DPROJ | where timestamp between (ago(${d}d) .. ago(${prev}d))" -o json 2>/dev/null \
+  | python3 -c '
+import json,sys
+raw=sys.stdin.read().strip()
+if raw:
+    try: t=json.loads(raw)["tables"][0]
+    except Exception: t=None
+    if t:
+        cols=[c["name"] for c in t["columns"]]; idx={n:i for i,n in enumerate(cols)}
+        def col(r,n):
+            i=idx.get(n); return r[i] if i is not None else None
+        def num(v):
+            try: return round(float(v),2)
+            except Exception: return 0
+        def bo(v): return v is True or str(v).lower()=="true"
+        for r in t["rows"]:
+            sys.stdout.write(json.dumps({"timestamp":col(r,"timestamp"),"name":col(r,"name"),"target":col(r,"target"),"success":bo(col(r,"success")),"resultCode":(str(col(r,"resultCode")) if col(r,"resultCode") is not None else None),"durationMs":num(col(r,"duration")),"operation":col(r,"operation_Name"),"operationId":col(r,"operation_Id"),"sessionId":col(r,"session_Id"),"authId":col(r,"user_AuthenticatedId")},ensure_ascii=False)+"\n")
+' >> "$NDJSON" || { echo "deps day $d FAILED (continuing)" >&2; continue; }
+done
+python3 - "$NDJSON" "$OUT" <<'PY'
+import json,sys,os
+nd,out=sys.argv[1],sys.argv[2]; rows=[]
+with open(nd,encoding="utf-8") as fh:
+    for line in fh:
+        line=line.strip()
+        if line: rows.append(json.loads(line))
+rows.sort(key=lambda r: r.get("timestamp") or "", reverse=True)
+json.dump(rows,open(os.path.join(out,"dependencies.json"),"w",encoding="utf-8"),ensure_ascii=False,separators=(",",":"))
+fails=sum(1 for r in rows if not r["success"])
+sys.stderr.write(f"{len(rows)} dependencies written ({fails} failed)\n")
+PY
+rm -f "$NDJSON"
+```
+
 ## Step 4 — Report
 
-Tell the user the resource, event/type counts, and window. If the dashboard is open
-they can hit **Refresh**; otherwise `cd app && pnpm dev`.
+Tell the user the resource, event/type counts, the events window (30d), and the
+dependency count + window (7d). If the dashboard is open they can hit **Refresh**;
+otherwise `cd app && pnpm dev`.
 
 ## Notes
 
@@ -215,8 +269,11 @@ they can hit **Refresh**; otherwise `cd app && pnpm dev`.
   always reads the current export — one project at a time.
 - `app/public/data/` + `.source` are git-ignored — exports hold real user data
   (emails, search terms). Never commit.
-- Only `customEvents` flow into this tool (it's event analytics); a project with
-  none will be empty. See the `reference-appinsights-prod` memory for telemetry caveats.
+- `customEvents` (30d) power Overview/Sessions/Explorer/Users/Failures/Breakdowns;
+  `dependencies` (7d, Step 3b) power the **Profiles** page (real API latency) and the
+  per-session load waterfall. `dependencies.json` can be large (~60MB/7d) — it's the
+  one heavy asset; a project with no dependencies just yields an empty Profiles page.
+  See the `reference-appinsights-prod` memory for telemetry caveats.
 
 ```
 

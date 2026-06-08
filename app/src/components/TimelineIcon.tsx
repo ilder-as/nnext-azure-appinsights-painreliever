@@ -48,6 +48,36 @@ export function TimelineIcon({ item }: { item: TimelineItem }) {
     );
   }
 
+  if (item.status === "warn") {
+    // aborted/cancelled call — a warning, not a failure (amber via row class)
+    return (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M12 9v4M12 16.4v.1"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        />
+        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6" />
+      </svg>
+    );
+  }
+
+  if (item.kind === "dependency") {
+    // network exchange (two opposing arrows) — a successful API call
+    return (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M4 8h13l-3-3M20 16H7l3 3"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path

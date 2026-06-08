@@ -115,6 +115,21 @@ export interface ErrorItem {
   os: string | null;
 }
 
+/** A dependency call from the App Insights `dependencies` table
+ *  (data/dependencies.json) — an outbound HTTP/fetch with a REAL duration. */
+export interface Dependency {
+  timestamp: string;
+  name: string; // raw "GET https://host/api/v1/projects/690/objects?no=D-PL680002"
+  target: string | null; // host — the "project" badge
+  success: boolean;
+  resultCode: string | null; // "200" / "500" / "0" (network/abort) …
+  durationMs: number; // REAL measured duration
+  operation: string | null; // operation_Name (the page the call fired on)
+  operationId: string | null;
+  sessionId: string | null; // same id space as customEvents
+  authId: string | null;
+}
+
 /** One user session, derived by grouping events (+errors) by sessionId. */
 export interface Session {
   id: string;
@@ -126,6 +141,9 @@ export interface Session {
   eventCount: number; // action events
   failureCount: number; // *Failed / PageNotFound actions
   errorCount: number; // JS exceptions
+  apiCount: number; // dependency calls in the session
+  apiFailCount: number; // real failed dependency calls (HTTP error codes)
+  apiWarnCount: number; // aborted/cancelled calls (resultCode 0) — warnings
   browser: string | null;
   os: string | null;
   deviceType: string | null;
@@ -133,23 +151,112 @@ export interface Session {
   lastRoute: string | null;
 }
 
-export type TimelineKind = "action" | "route" | "error";
+export type TimelineKind = "action" | "route" | "error" | "dependency";
 
 /** One step in a session's timeline (the replay breadcrumb). */
 export interface TimelineItem {
   id: string;
   ts: string;
   kind: TimelineKind;
-  name: string; // event name / "Navigated" / exception type
+  name: string; // event name / "Navigated" / exception type / endpoint
   summaryHtml: string; // pre-escaped HTML (summarize / failureMessage / route)
   route: string | null;
-  status: "ok" | "fail" | null;
+  /** "warn" = aborted/cancelled dependency (resultCode 0), not a real failure. */
+  status: "ok" | "fail" | "warn" | null;
   offsetMs: number; // real ms from session start
   playbackMs: number; // compressed ms (idle gaps capped) for replay
+  durationMs?: number; // set for kind === "dependency" (real call duration)
+  host?: string | null; // dependency target host (bar color / label)
+  rawName?: string; // dependency: full untemplated "VERB url" (real ids)
+  resultCode?: string | null; // dependency: HTTP/result code
+  operationId?: string | null; // dependency: trace/operation id
 }
 
 export interface SessionTimeline {
   items: TimelineItem[];
   realTotalMs: number;
   playbackTotalMs: number;
+}
+
+/* ---- Profiles (real dependency latency) -----------------------------------
+   Rolled up from the App Insights `dependencies` table (real outbound-call
+   durations) over a 7-day window. Endpoints are the dependency `name` with ids
+   templated; percentiles/self-time/fail-rate are over the REAL `durationMs`. */
+
+/** Percentile bundle (ms) for a real-duration distribution. */
+export interface Percentiles {
+  p50: number;
+  p75: number;
+  p95: number;
+  p99: number;
+}
+
+/** A session that had ≥1 failing call to a given endpoint (drill-down link). */
+export interface FailSession {
+  sessionId: string;
+  authId: string | null;
+  count: number; // failing calls to this endpoint in the session
+  resultCode: string; // most recent failing result code
+  lastTs: string; // most recent failing call timestamp
+}
+
+/** One endpoint, rolled up by real call duration. */
+export interface ProfileFunction extends Percentiles {
+  name: string; // templated endpoint, e.g. "GET /api/v1/projects/{id}/objects"
+  count: number; // # calls (samples)
+  selfTimeMs: number; // sum of real durations (drives default sort + bar)
+  failCount: number; // # real failures (HTTP error codes, excludes aborts)
+  warnCount: number; // # aborted/cancelled calls (resultCode 0)
+  failRate: number; // real failures / count (0..1)
+  platform: string; // dominant target host ("project" badge)
+  platformColor: string;
+  color: string; // endpoint color (leading dot)
+  daySeries: number[]; // per-day p75 over the 7-day window — trend chart + spark
+  /** % rise of recent-3d vs prior-3d p75 when flagged a regression, else null. */
+  regressionPct: number | null;
+  failSessions: FailSession[]; // sessions with failing calls, most recent first
+  warnSessions: FailSession[]; // sessions with aborted calls, most recent first
+}
+
+/** One transactions-table row (same endpoint rollup, count-sorted). */
+export interface TxnRow extends Percentiles {
+  id: string;
+  transaction: string; // templated endpoint
+  project: string; // dominant target host
+  color: string; // host color
+  count: number;
+  failRate: number;
+  selfTimeMs: number;
+}
+
+/** One Failures-tab row: an endpoint with one or more failed calls. */
+export interface FailureRow {
+  id: string; // endpoint template (unique key)
+  endpoint: string;
+  target: string | null; // dominant host
+  topResultCode: string; // most-frequent failing resultCode ("500" / "0" / …)
+  failCount: number;
+  failRate: number; // failCount / total calls for this endpoint
+  p95Ms: number; // p95 of the FAILING calls' durations
+  daySeries: number[]; // per-day fail counts (length = days)
+  color: string;
+}
+
+/** Everything the Profiles view renders, from one pass over the dependencies. */
+export interface Profiles {
+  endpoints: ProfileFunction[]; // by descending self-time
+  transactions: TxnRow[]; // by descending count
+  regressed: ProfileFunction[]; // by descending regression %
+  failures: FailureRow[]; // by descending fail count
+  totalCalls: number;
+  totalSessions: number;
+  totalSelfTimeMs: number;
+  failRate: number; // project-wide real-failure rate (0..1)
+  warnRate: number; // project-wide abort/cancel rate (0..1)
+  medianMs: number; // project-wide p50 real duration
+  // 7-day dependency window (independent of the 30-day events meta)
+  fromMs: number;
+  toMs: number;
+  days: number;
+  dayLabels: string[];
 }

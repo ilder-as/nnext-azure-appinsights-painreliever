@@ -61,6 +61,23 @@ export function fmtBytes(b: unknown): string {
   return (n / 1048576).toFixed(1) + " MB";
 }
 
+/** Duration in ms → human string ("553ms" / "1.76s" / "4.2min" / "1.6h").
+ *  Sentry-Profiles style: 2-decimal seconds, coarser units above a minute. */
+export function fmtDuration(ms: unknown): string {
+  const n = Number(ms);
+  if (!isFinite(n) || n < 0) return "—";
+  if (n < 1000) {
+    // Branch on the ROUNDED value so the threshold and the rendered number
+    // agree — otherwise 9.999 → "10.00ms" and 999.6 → "1000ms".
+    if (n < 9.995) return `${n.toFixed(2)}ms`;
+    const r = Math.round(n);
+    if (r < 1000) return `${r}ms`; // 1000 falls through to seconds below
+  }
+  if (n < 60000) return `${(n / 1000).toFixed(2)}s`;
+  if (n < 3600000) return `${(n / 60000).toFixed(1)}min`;
+  return `${(n / 3600000).toFixed(1)}h`;
+}
+
 const MONTHS = [
   "Jan",
   "Feb",

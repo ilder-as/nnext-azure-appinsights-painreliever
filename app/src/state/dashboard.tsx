@@ -16,21 +16,24 @@ import {
 } from "@/lib/aggregate";
 import { discoverDimensions } from "@/lib/dimensions";
 import { deriveSessions } from "@/lib/sessions";
+import { deriveProfiles } from "@/lib/profiles";
 import type {
   AppEvent,
   Aggregate,
+  Dependency,
   Derived,
   Dimension,
   ErrorItem,
   Filters,
   Meta,
   Pair,
+  Profiles,
   Session,
   SortKey,
 } from "@/lib/types";
 
 type Status = "loading" | "ready" | "empty" | "error";
-export type View = "overview" | "sessions";
+export type View = "overview" | "sessions" | "profiles";
 
 export interface DashboardValue {
   status: Status;
@@ -49,9 +52,14 @@ export interface DashboardValue {
   // session trace
   errors: ErrorItem[];
   sessions: Session[];
+  /** Outbound dependency calls (real durations) — powers Profiles + waterfall. */
+  dependencies: Dependency[];
+  /** Profiles pivot over real dependency latency (7-day window). */
+  profiles: Profiles;
   view: View;
   setView: (v: View) => void;
   openUserSessions: (authId: string) => void;
+  openSession: (sessionId: string) => void;
   // actions
   toggleEvent: (name: string) => void;
   toggleDim: (key: string, value: string) => void;
@@ -91,6 +99,7 @@ async function fetchData(): Promise<{
   meta: Meta;
   events: AppEvent[];
   errors: ErrorItem[];
+  dependencies: Dependency[];
 }> {
   const [metaRes, evRes] = await Promise.all([
     fetch("./data/meta.json" + bust()),
@@ -113,7 +122,19 @@ async function fetchData(): Promise<{
   } catch {
     /* no exceptions.json → no error markers */
   }
-  return { meta, events, errors };
+
+  // dependencies (real HTTP-call durations) — optional, same as exceptions
+  let dependencies: Dependency[] = [];
+  try {
+    const depRes = await fetch("./data/dependencies.json" + bust());
+    if (depRes.ok) {
+      const parsed = await depRes.json();
+      if (Array.isArray(parsed)) dependencies = parsed as Dependency[];
+    }
+  } catch {
+    /* no dependencies.json → empty Profiles, rest of app unaffected */
+  }
+  return { meta, events, errors, dependencies };
 }
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
@@ -122,6 +143,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [errors, setErrors] = useState<ErrorItem[]>([]);
+  const [dependencies, setDependencies] = useState<Dependency[]>([]);
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
   const [refreshing, setRefreshing] = useState(false);
   const [view, setView] = useState<View>("overview");
@@ -130,10 +152,16 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const load = useCallback(async (isRefresh: boolean) => {
     if (isRefresh) setRefreshing(true);
     try {
-      const { meta: m, events: ev, errors: ex } = await fetchData();
+      const {
+        meta: m,
+        events: ev,
+        errors: ex,
+        dependencies: dep,
+      } = await fetchData();
       setMeta(m);
       setEvents(ev);
       setErrors(ex);
+      setDependencies(dep);
       setError(null);
       setStatus(ev.length === 0 ? "empty" : "ready");
     } catch (err) {
@@ -168,9 +196,12 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     [events, dimensions],
   );
   const sessions = useMemo(
-    () => deriveSessions(events, errors),
-    [events, errors],
+    () => deriveSessions(events, errors, dependencies),
+    [events, errors, dependencies],
   );
+  // Profiles pivots real dependency latency over its own 7-day window —
+  // independent of the events/filters.
+  const profiles = useMemo(() => deriveProfiles(dependencies), [dependencies]);
 
   const anyFilterActive =
     filters.events.size > 0 ||
@@ -244,6 +275,13 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     setFilters((f) => ({ ...f, search: authId }));
     setView("sessions");
   }, []);
+  // Deep-link to a specific session (e.g. from a failing endpoint in Profiles).
+  // The session list filters on id, so searching the session id selects it.
+  const openSession = useCallback((sessionId: string) => {
+    window.clearTimeout(searchTimer.current);
+    setFilters((f) => ({ ...f, search: sessionId }));
+    setView("sessions");
+  }, []);
 
   const value: DashboardValue = {
     status,
@@ -260,9 +298,12 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     anyFilterActive,
     errors,
     sessions,
+    dependencies,
+    profiles,
     view,
     setView,
     openUserSessions,
+    openSession,
     toggleEvent,
     toggleDim,
     clearEvents,

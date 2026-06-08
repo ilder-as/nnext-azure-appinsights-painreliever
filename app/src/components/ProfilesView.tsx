@@ -353,24 +353,42 @@ function FunctionRow({
             <span className="pf-fn-regtag">regressed</span>
           ) : null}
           {fn.failCount > 0 ? (
-            <button
-              type="button"
-              className="pf-fn-failtag pf-chip-btn"
-              onClick={() => openDrill("fail")}
-              title={`${fmtInt(fn.failCount)} failed calls — ${fmtPct(fn.failRate)} of ${fmtInt(fn.count)} · open failing sessions`}
-            >
-              {fmtInt(fn.failCount)} fail
-            </button>
+            hasFail ? (
+              <button
+                type="button"
+                className="pf-fn-failtag pf-chip-btn"
+                onClick={() => openDrill("fail")}
+                title={`${fmtInt(fn.failCount)} failed calls — ${fmtPct(fn.failRate)} of ${fmtInt(fn.count)} · open failing sessions`}
+              >
+                {fmtInt(fn.failCount)} fail
+              </button>
+            ) : (
+              <span
+                className="pf-fn-failtag"
+                title={`${fmtInt(fn.failCount)} failed calls (no session id to open)`}
+              >
+                {fmtInt(fn.failCount)} fail
+              </span>
+            )
           ) : null}
           {fn.warnCount > 0 ? (
-            <button
-              type="button"
-              className="pf-fn-warntag pf-chip-btn"
-              onClick={() => openDrill("warn")}
-              title={`${fmtInt(fn.warnCount)} aborted/cancelled calls (resultCode 0) · open aborted sessions`}
-            >
-              {fmtInt(fn.warnCount)} aborted
-            </button>
+            hasWarn ? (
+              <button
+                type="button"
+                className="pf-fn-warntag pf-chip-btn"
+                onClick={() => openDrill("warn")}
+                title={`${fmtInt(fn.warnCount)} aborted/cancelled calls (resultCode 0) · open aborted sessions`}
+              >
+                {fmtInt(fn.warnCount)} aborted
+              </button>
+            ) : (
+              <span
+                className="pf-fn-warntag"
+                title={`${fmtInt(fn.warnCount)} aborted/cancelled calls (resultCode 0)`}
+              >
+                {fmtInt(fn.warnCount)} aborted
+              </span>
+            )
           ) : null}
           <span className="pf-fn-meta">
             {fmtInt(fn.count)} · {fn.platform}

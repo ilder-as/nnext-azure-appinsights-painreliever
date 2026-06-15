@@ -49,6 +49,13 @@ export interface Filters {
 
 export type ColorMap = Record<string, string>;
 
+/** An active date-range scope for the Overview (null = the full data window). */
+export interface DateRange {
+  fromMs: number;
+  toMs: number;
+  label: string;
+}
+
 /** Window/colour context derived once from meta + the full dataset. */
 export interface Derived {
   now: number; // ms — dataset "now" (meta.to)

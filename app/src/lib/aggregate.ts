@@ -19,10 +19,27 @@ import type {
 
 const DAY_MS = 86400000;
 
-function startOfUtcDay(ms: number): number {
+export function startOfUtcDay(ms: number): number {
   const d = new Date(ms);
   d.setUTCHours(0, 0, 0, 0);
   return d.getTime();
+}
+
+/** Re-window a Derived for a selected date range — recomputes the day axis
+ *  (now/windowFromMs/days/dayLabels) while keeping the stable full-dataset
+ *  colours (typeOrder/topTypes/colorMap). */
+export function rangeDerived(
+  base: Derived,
+  fromMs: number,
+  toMs: number,
+): Derived {
+  const windowFromMs = startOfUtcDay(fromMs);
+  const endMid = startOfUtcDay(toMs);
+  const days = Math.max(1, Math.round((endMid - windowFromMs) / DAY_MS) + 1);
+  const dayLabels = Array.from({ length: days }, (_, i) =>
+    fmtDay(new Date(windowFromMs + i * DAY_MS)),
+  );
+  return { ...base, now: toMs, windowFromMs, days, dayLabels };
 }
 
 /** Top-N event types across the WHOLE dataset (stable hero stacking colours). */

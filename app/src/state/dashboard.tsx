@@ -12,6 +12,7 @@ import {
   aggregate,
   computeDerived,
   explorerRows,
+  rangeDerived,
   staticCounts,
 } from "@/lib/aggregate";
 import { discoverDimensions } from "@/lib/dimensions";
@@ -20,6 +21,7 @@ import { deriveProfiles } from "@/lib/profiles";
 import type {
   AppEvent,
   Aggregate,
+  DateRange,
   Dependency,
   Derived,
   Dimension,
@@ -47,6 +49,9 @@ export interface DashboardValue {
   menuCounts: { byType: Pair[]; byDim: Record<string, Pair[]> };
   /** Auto-discovered breakdown/filter axes for the loaded dataset. */
   dimensions: Dimension[];
+  /** Active date-range scope for the Overview (null = full window). */
+  range: DateRange | null;
+  setRange: (r: DateRange | null) => void;
   refreshing: boolean;
   anyFilterActive: boolean;
   // session trace
@@ -147,6 +152,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
   const [refreshing, setRefreshing] = useState(false);
   const [view, setView] = useState<View>("overview");
+  const [range, setRange] = useState<DateRange | null>(null);
   const searchTimer = useRef<number | undefined>(undefined);
 
   const load = useCallback(async (isRefresh: boolean) => {
@@ -178,14 +184,31 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     void load(false);
   }, [load]);
 
-  const derived = useMemo(
+  // Colours + full window from the whole dataset (stable across range changes).
+  const derivedFull = useMemo(
     () => (events.length ? computeDerived(meta, events) : EMPTY_DERIVED),
     [meta, events],
   );
+  // Effective derived: re-windowed to the selected range (keeps stable colours).
+  const derived = useMemo(
+    () =>
+      range && events.length
+        ? rangeDerived(derivedFull, range.fromMs, range.toMs)
+        : derivedFull,
+    [derivedFull, range, events.length],
+  );
+  // Events scoped to the active range (full dataset when no range).
+  const rangeEvents = useMemo(() => {
+    if (!range) return events;
+    return events.filter((e) => {
+      const t = Date.parse(e.timestamp);
+      return t >= range.fromMs && t <= range.toMs;
+    });
+  }, [events, range]);
   const dimensions = useMemo(() => discoverDimensions(events), [events]);
   const agg = useMemo(
-    () => aggregate(events, filters, derived, dimensions),
-    [events, filters, derived, dimensions],
+    () => aggregate(rangeEvents, filters, derived, dimensions),
+    [rangeEvents, filters, derived, dimensions],
   );
   const explorer = useMemo(
     () => explorerRows(agg.rows, filters),
@@ -294,6 +317,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     explorer,
     menuCounts,
     dimensions,
+    range,
+    setRange,
     refreshing,
     anyFilterActive,
     errors,

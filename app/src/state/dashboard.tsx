@@ -222,9 +222,17 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     () => deriveSessions(events, errors, dependencies),
     [events, errors, dependencies],
   );
-  // Profiles pivots real dependency latency over its own 7-day window —
-  // independent of the events/filters.
-  const profiles = useMemo(() => deriveProfiles(dependencies), [dependencies]);
+  // Dependencies scoped to the active range (drives the Profiles page).
+  const rangeDeps = useMemo(() => {
+    if (!range) return dependencies;
+    return dependencies.filter((d) => {
+      const t = Date.parse(d.timestamp);
+      return t >= range.fromMs && t <= range.toMs;
+    });
+  }, [dependencies, range]);
+  // Profiles pivots real dependency latency; the date-range picker scopes it
+  // (deriveProfiles derives its window from whatever deps it's given).
+  const profiles = useMemo(() => deriveProfiles(rangeDeps), [rangeDeps]);
 
   const anyFilterActive =
     filters.events.size > 0 ||

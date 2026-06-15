@@ -20,19 +20,28 @@ const EMPTY_TIMELINE: SessionTimeline = {
  * empty search shows every session.
  */
 export function SessionsView() {
-  const { sessions, events, errors, dependencies, filters } = useDashboard();
+  const { sessions, events, errors, dependencies, filters, range } =
+    useDashboard();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Filter sessions by the global search: case-insensitive substring over the
-  // user identity + session id. Empty search ⇒ all sessions.
+  // Narrow sessions by the active date range (start within it) and the global
+  // search (case-insensitive over user identity + session id).
   const filtered = useMemo(() => {
+    let list = sessions;
+    if (range) {
+      list = list.filter((s) => {
+        const t = Date.parse(s.start);
+        return t >= range.fromMs && t <= range.toMs;
+      });
+    }
     const q = filters.search.trim().toLowerCase();
-    if (!q) return sessions;
-    return sessions.filter((s) => {
-      const hay = `${s.authId ?? ""} ${s.userId ?? ""} ${s.id}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [sessions, filters.search]);
+    if (q) {
+      list = list.filter((s) =>
+        `${s.authId ?? ""} ${s.userId ?? ""} ${s.id}`.toLowerCase().includes(q),
+      );
+    }
+    return list;
+  }, [sessions, filters.search, range]);
 
   // Effective selection derived DURING render so it's never outside the filtered
   // list (no one-frame "no sessions" flash when the search narrows).
